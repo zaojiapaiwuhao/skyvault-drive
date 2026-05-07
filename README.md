@@ -10,21 +10,6 @@ SkyVault Drive 是一个纯静态的云盘风格网站页面，支持中英文�
 
 支持 Debian / Ubuntu 系统：
 
-```text
-Ubuntu 20.04+
-Ubuntu 22.04+
-Ubuntu 24.04+
-Debian 11+
-Debian 12+
-
-项目结构
-
-skyvault-drive/
-├── public/
-│   └── index.html
-├── skyvault-drive
-├── README.md
-└── LICENSE
 
 安装命令
 
