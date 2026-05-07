@@ -10,10 +10,12 @@ SkyVault Drive 是一个纯静态的云盘风格网站页面，支持中英文�
 
 在 VPS 上执行：
 
-```bash
 curl -fsSL https://raw.githubusercontent.com/zaojiapaiwuhao/skyvault-drive/main/skyvault-drive -o skyvault-drive
+
 chmod +x skyvault-drive
+
 sudo ./skyvault-drive
+
 
 =================================================
  SkyVault Drive 一键部署管理菜单
