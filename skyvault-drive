@@ -37,6 +37,31 @@ check_system() {
   fi
 }
 
+ensure_shortcuts() {
+  local current_script=""
+  local target_sk="/usr/local/bin/sk"
+  local target_full="/usr/local/bin/skyvault-drive"
+
+  current_script="$(readlink -f "$0" 2>/dev/null || echo "$0")"
+
+  if [ ! -f "$current_script" ]; then
+    echo "未能定位当前脚本文件，跳过 sk 快捷命令安装。"
+    return
+  fi
+
+  mkdir -p /usr/local/bin
+
+  if [ "$current_script" != "$target_sk" ]; then
+    cp "$current_script" "$target_sk"
+    chmod +x "$target_sk"
+  fi
+
+  if [ "$current_script" != "$target_full" ]; then
+    cp "$current_script" "$target_full"
+    chmod +x "$target_full"
+  fi
+}
+
 install_base_deps() {
   echo ""
   echo "[基础依赖] 安装 curl / git / ca-certificates / gnupg..."
@@ -152,6 +177,9 @@ EOS
   echo ""
   echo "后续更新网站可执行："
   echo "  sudo skyvault-update"
+  echo ""
+  echo "管理菜单快捷命令："
+  echo "  sudo sk"
 
   pause
 }
@@ -567,55 +595,6 @@ show_status() {
   pause
 }
 
-install_as_command() {
-  clear_screen
-  echo "================================================="
-  echo " 5. 安装 sk 快捷命令"
-  echo "================================================="
-  echo ""
-  echo "这个操作会把当前脚本安装为两个系统命令："
-  echo ""
-  echo "  /usr/local/bin/sk"
-  echo "  /usr/local/bin/skyvault-drive"
-  echo ""
-  echo "以后可以直接运行："
-  echo ""
-  echo "  sudo sk"
-  echo ""
-  echo "或者："
-  echo ""
-  echo "  sudo skyvault-drive"
-  echo ""
-
-  read -r -p "确认安装 sk 快捷命令？[y/N]: " CONFIRM
-  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "已取消。"
-    pause
-    return
-  fi
-
-  if [ -f "$0" ]; then
-    cp "$0" /usr/local/bin/sk
-    cp "$0" /usr/local/bin/skyvault-drive
-
-    chmod +x /usr/local/bin/sk
-    chmod +x /usr/local/bin/skyvault-drive
-
-    echo ""
-    echo "安装完成。以后可以执行："
-    echo ""
-    echo "  sudo sk"
-    echo ""
-    echo "或："
-    echo ""
-    echo "  sudo skyvault-drive"
-  else
-    echo "未能定位当前脚本文件。"
-  fi
-
-  pause
-}
-
 main_menu() {
   while true; do
     clear_screen
@@ -624,12 +603,12 @@ main_menu() {
     echo "================================================="
     echo " 仓库: $REPO_URL"
     echo " 目录: $SITE_DIR"
+    echo " 快捷命令: sudo sk"
     echo "================================================="
     echo " 1) 部署 / 更新静态网站"
     echo " 2) 证书 / Caddy 管理"
     echo " 3) 完全卸载：静态网站 + Caddy + 证书"
     echo " 4) 查看状态"
-    echo " 5) 安装 sk 快捷命令"
     echo " 0) 退出"
     echo "================================================="
     read -r -p "请选择操作: " CHOICE
@@ -639,7 +618,6 @@ main_menu() {
       2) cert_menu ;;
       3) full_uninstall ;;
       4) show_status ;;
-      5) install_as_command ;;
       0) echo "退出。"; exit 0 ;;
       *) echo "无效选择"; sleep 1 ;;
     esac
@@ -648,4 +626,5 @@ main_menu() {
 
 need_root
 check_system
+ensure_shortcuts
 main_menu
