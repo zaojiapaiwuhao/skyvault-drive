@@ -4,20 +4,16 @@ SkyVault Drive 是一个纯静态的云盘风格网站页面，支持中英文�
 
 项目自带 VPS 菜单式部署脚本，支持部署静态网站、安装 Caddy、申请 HTTPS 证书、安装 `sk` 快捷命令和卸载清理。
 
----
+支持 Debian / Ubuntu 系统。
 
-## 支持系统
+## 安装和使用
 
-支持 Debian / Ubuntu 系统：
+在 VPS 上执行：
 
-
-安装命令
-
+```bash
 curl -fsSL https://raw.githubusercontent.com/zaojiapaiwuhao/skyvault-drive/main/skyvault-drive -o skyvault-drive
 chmod +x skyvault-drive
 sudo ./skyvault-drive
-
-管理菜单
 
 =================================================
  SkyVault Drive 一键部署管理菜单
@@ -29,4 +25,12 @@ sudo ./skyvault-drive
  2) 证书 / Caddy 管理
  3) 完全卸载：静态网站 + Caddy + 证书
  4) 查看状态
- 5)
+ 5) 安装 sk 快捷命令
+ 0) 退出
+=================================================
+
+1. 选择 1：部署 / 更新静态网站
+2. 选择 2：证书 / Caddy 管理
+3. 选择 1：安装 Caddy 并申请 HTTPS 证书
+4. 输入你的域名
+5. 返回主菜单，选择 5：安装 sk 快捷命令
