@@ -183,6 +183,83 @@ show_port_usage() {
   ss -tulpn 2>/dev/null | grep -E ':80|:443' || echo "未检测到 80 / 443 端口占用。"
 }
 
+get_public_ipv4() {
+  local ip=""
+
+  ip="$(curl -4fsS https://api.ipify.org 2>/dev/null || true)"
+
+  if [ -z "$ip" ]; then
+    ip="$(curl -4fsS https://ifconfig.me 2>/dev/null || true)"
+  fi
+
+  if [ -z "$ip" ]; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  fi
+
+  echo "$ip"
+}
+
+check_domain_resolve_to_vps() {
+  local domain="${1:-}"
+  local public_ip=""
+  local domain_ips=""
+
+  if [ -z "$domain" ]; then
+    echo "域名不能为空。"
+    return 1
+  fi
+
+  echo ""
+  echo "================================================="
+  echo " 自动检查域名解析"
+  echo "================================================="
+  echo "正在检查域名：$domain"
+  echo ""
+
+  public_ip="$(get_public_ipv4)"
+  domain_ips="$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ' || true)"
+
+  echo "当前 VPS 公网 IP："
+  echo "  ${public_ip:-未获取到}"
+  echo ""
+
+  echo "域名当前解析到的 IPv4："
+  if [ -n "$domain_ips" ]; then
+    echo "  $domain_ips"
+  else
+    echo "  未查询到 IPv4 解析记录"
+  fi
+
+  echo ""
+
+  if [ -z "$public_ip" ]; then
+    echo "检查结果：未能获取当前 VPS 公网 IP。"
+    echo "================================================="
+    return 1
+  fi
+
+  if [ -z "$domain_ips" ]; then
+    echo "检查结果：域名没有解析到 IPv4，或者 DNS 还没有生效。"
+    echo "================================================="
+    return 1
+  fi
+
+  if echo " $domain_ips " | grep -qw "$public_ip"; then
+    echo "检查通过：域名已经解析到当前 VPS IP。"
+    echo "================================================="
+    return 0
+  else
+    echo "检查未通过：域名解析 IP 与当前 VPS IP 不一致。"
+    echo ""
+    echo "请确认 DNS A 记录是否指向当前 VPS IP："
+    echo "  $public_ip"
+    echo ""
+    echo "如果你刚修改 DNS，请等待 DNS 生效后再申请证书。"
+    echo "================================================="
+    return 1
+  fi
+}
+
 deploy_certificate() {
   clear_screen
   echo "================================================="
@@ -217,11 +294,25 @@ deploy_certificate() {
 
   echo ""
   echo "你输入的域名是：$DOMAIN"
+
+  check_domain_resolve_to_vps "$DOMAIN" || {
+    echo ""
+    echo "域名解析检查未通过。"
+    echo "为了避免 Caddy 申请证书失败，建议先修正 DNS 解析。"
+    echo ""
+    read -r -p "是否仍然强制继续申请证书？[y/N]: " FORCE_CONTINUE
+
+    if [[ ! "$FORCE_CONTINUE" =~ ^[Yy]$ ]]; then
+      echo "已取消证书部署。"
+      pause
+      return
+    fi
+  }
+
   echo ""
   echo "请确认："
-  echo "  1. 域名 A 记录已经解析到当前 VPS IP"
-  echo "  2. VPS 安全组 / 防火墙已开放 80 和 443"
-  echo "  3. 没有 Nginx / Apache / 宝塔占用 80 和 443"
+  echo "  1. VPS 安全组 / 防火墙已开放 80 和 443"
+  echo "  2. 没有 Nginx / Apache / 宝塔占用 80 和 443"
   echo ""
 
   show_port_usage
