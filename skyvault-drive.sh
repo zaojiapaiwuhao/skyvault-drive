@@ -1,147 +1,111 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DOMAIN="${1:-}"
-REPO_URL="${2:-https://github.com/zaojiapaiwuhao/skyvault-drive.git}"
+REPO_URL="https://github.com/zaojiapaiwuhao/skyvault-drive.git"
 SITE_DIR="/var/www/skyvault-drive"
 TMP_DIR="/tmp/skyvault-drive-deploy"
 CONFIG_FILE="/etc/skyvault-drive.conf"
+CADDYFILE="/etc/caddy/Caddyfile"
 
-if [ -z "$DOMAIN" ]; then
-  echo "用法:"
-  echo "  sudo bash install.sh 你的域名"
-  echo ""
-  echo "示例:"
-  echo "  sudo bash install.sh drive.example.com"
-  echo ""
-  echo "如果你想指定其他 Git 仓库，也可以这样:"
-  echo "  sudo bash install.sh drive.example.com https://github.com/other/repo.git"
-  exit 1
-fi
-
-if [ "$(id -u)" -ne 0 ]; then
-  echo "请使用 root 权限运行，例如：sudo bash install.sh $DOMAIN"
-  exit 1
-fi
-
-echo "================================================="
-echo " SkyVault Drive 静态站点部署脚本"
-echo "-------------------------------------------------"
-echo " 域名: $DOMAIN"
-echo " 仓库: $REPO_URL"
-echo " 网站目录: $SITE_DIR"
-echo "================================================="
-
-echo ""
-echo "[1/8] 安装基础依赖..."
-apt update
-apt install -y curl git ca-certificates gnupg lsb-release debian-keyring debian-archive-keyring apt-transport-https
-
-echo ""
-echo "[2/8] 检查 80 / 443 端口占用..."
-PORT_USED="$(ss -tulpn 2>/dev/null | grep -E ':80|:443' || true)"
-
-if echo "$PORT_USED" | grep -qE 'nginx|apache2|httpd|openresty'; then
-  echo "检测到 80/443 端口可能被其他 Web 服务占用："
-  echo "$PORT_USED"
-  echo ""
-  echo "如果你要继续使用 Caddy，请先停止 Nginx / Apache / OpenResty / 宝塔相关 Web 服务。"
-  echo "常用命令示例："
-  echo "  sudo systemctl stop nginx"
-  echo "  sudo systemctl disable nginx"
-  echo ""
-  echo "如果你确认不影响，也可以手动处理后重新运行本脚本。"
-  exit 1
-fi
-
-echo ""
-echo "[3/8] 安装 Caddy..."
-if ! command -v caddy >/dev/null 2>&1; then
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-    > /etc/apt/sources.list.d/caddy-stable.list
-
-  apt update
-  apt install -y caddy
-else
-  echo "Caddy 已安装，跳过安装。"
-fi
-
-echo ""
-echo "[4/8] 拉取网站代码..."
-rm -rf "$TMP_DIR"
-git clone --depth=1 "$REPO_URL" "$TMP_DIR"
-
-echo ""
-echo "[5/8] 部署静态文件..."
-mkdir -p "$SITE_DIR"
-
-if [ -d "$TMP_DIR/public" ]; then
-  rm -rf "$SITE_DIR"/*
-  cp -a "$TMP_DIR/public/." "$SITE_DIR/"
-elif [ -f "$TMP_DIR/index.html" ]; then
-  rm -rf "$SITE_DIR"/*
-  cp "$TMP_DIR/index.html" "$SITE_DIR/index.html"
-else
-  echo "错误：仓库里没有 public/index.html 或 index.html"
-  echo "请确认仓库结构类似："
-  echo "  public/index.html"
-  exit 1
-fi
-
-if [ ! -f "$SITE_DIR/index.html" ]; then
-  echo "错误：部署后没有找到 $SITE_DIR/index.html"
-  exit 1
-fi
-
-chown -R caddy:caddy "$SITE_DIR" || true
-chmod -R 755 "$SITE_DIR"
-
-echo ""
-echo "[6/8] 写入 Caddy 配置..."
-cat > /etc/caddy/Caddyfile <<EOF
-$DOMAIN {
-    root * $SITE_DIR
-    file_server
-    encode gzip zstd
+clear_screen() {
+  clear || true
 }
-EOF
 
-caddy fmt --overwrite /etc/caddy/Caddyfile
+pause() {
+  echo ""
+  read -r -p "按回车键继续..."
+}
 
-echo ""
-echo "[7/8] 保存部署配置..."
-cat > "$CONFIG_FILE" <<EOF
-DOMAIN="$DOMAIN"
-REPO_URL="$REPO_URL"
-SITE_DIR="$SITE_DIR"
-EOF
+need_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "请使用 root 权限运行，例如：sudo ./skyvault-drive"
+    echo ""
+    echo "如果你想安装成系统命令，可以执行："
+    echo "  sudo mv skyvault-drive /usr/local/bin/skyvault-drive"
+    echo "  sudo skyvault-drive"
+    exit 1
+  fi
+}
 
-echo ""
-echo "[8/8] 创建更新命令 skyvault-update..."
-cat > /usr/local/bin/skyvault-update <<'EOS'
+check_system() {
+  if ! command -v apt >/dev/null 2>&1; then
+    echo "当前脚本主要适配 Debian / Ubuntu 系统。"
+    echo "未检测到 apt，暂不继续。"
+    exit 1
+  fi
+}
+
+install_base_deps() {
+  echo ""
+  echo "[基础依赖] 安装 curl / git / ca-certificates / gnupg..."
+  apt update
+  apt install -y curl git ca-certificates gnupg lsb-release debian-keyring debian-archive-keyring apt-transport-https
+}
+
+deploy_static_site() {
+  clear_screen
+  echo "================================================="
+  echo " 1. 部署 / 更新 SkyVault Drive 静态网站"
+  echo "================================================="
+  echo "仓库地址: $REPO_URL"
+  echo "网站目录: $SITE_DIR"
+  echo ""
+
+  install_base_deps
+
+  echo ""
+  echo "[1/3] 拉取 GitHub 代码..."
+  rm -rf "$TMP_DIR"
+  git clone --depth=1 "$REPO_URL" "$TMP_DIR"
+
+  echo ""
+  echo "[2/3] 部署 public/index.html..."
+  mkdir -p "$SITE_DIR"
+
+  if [ -d "$TMP_DIR/public" ]; then
+    rm -rf "$SITE_DIR"/*
+    cp -a "$TMP_DIR/public/." "$SITE_DIR/"
+  elif [ -f "$TMP_DIR/index.html" ]; then
+    rm -rf "$SITE_DIR"/*
+    cp "$TMP_DIR/index.html" "$SITE_DIR/index.html"
+  else
+    echo "错误：仓库里没有 public/index.html 或 index.html"
+    echo ""
+    echo "请确认仓库结构类似："
+    echo "  public/index.html"
+    pause
+    return
+  fi
+
+  if [ ! -f "$SITE_DIR/index.html" ]; then
+    echo "错误：部署后没有找到 $SITE_DIR/index.html"
+    pause
+    return
+  fi
+
+  chmod -R 755 "$SITE_DIR"
+
+  if id caddy >/dev/null 2>&1; then
+    chown -R caddy:caddy "$SITE_DIR" || true
+  fi
+
+  echo ""
+  echo "[3/3] 创建更新命令 skyvault-update..."
+
+  cat > /usr/local/bin/skyvault-update <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_FILE="/etc/skyvault-drive.conf"
-
-if [ ! -f "$CONFIG_FILE" ]; then
-  echo "未找到配置文件: $CONFIG_FILE"
-  exit 1
-fi
-
-source "$CONFIG_FILE"
-
+REPO_URL="https://github.com/zaojiapaiwuhao/skyvault-drive.git"
+SITE_DIR="/var/www/skyvault-drive"
 TMP_DIR="/tmp/skyvault-drive-update"
 
 echo "================================================="
 echo " SkyVault Drive 更新脚本"
-echo "-------------------------------------------------"
-echo " 仓库: $REPO_URL"
-echo " 网站目录: $SITE_DIR"
 echo "================================================="
+echo "仓库: $REPO_URL"
+echo "目录: $SITE_DIR"
+echo ""
 
 rm -rf "$TMP_DIR"
 git clone --depth=1 "$REPO_URL" "$TMP_DIR"
@@ -164,42 +128,394 @@ if [ ! -f "$SITE_DIR/index.html" ]; then
   exit 1
 fi
 
-chown -R caddy:caddy "$SITE_DIR" || true
 chmod -R 755 "$SITE_DIR"
 
-systemctl reload caddy
+if id caddy >/dev/null 2>&1; then
+  chown -R caddy:caddy "$SITE_DIR" || true
+fi
+
+if systemctl list-unit-files | grep -q '^caddy.service'; then
+  systemctl reload caddy || true
+fi
 
 echo ""
 echo "更新完成。"
-echo "你可以访问："
-echo "  https://$DOMAIN"
 EOS
 
-chmod +x /usr/local/bin/skyvault-update
+  chmod +x /usr/local/bin/skyvault-update
 
-echo ""
-echo "启动 Caddy..."
-systemctl enable caddy
-systemctl restart caddy
+  echo ""
+  echo "静态网站部署完成！"
+  echo "网站目录：$SITE_DIR"
+  echo ""
+  echo "后续更新网站可执行："
+  echo "  sudo skyvault-update"
 
-echo ""
-echo "================================================="
-echo "部署完成！"
-echo ""
-echo "访问地址:"
-echo "  https://$DOMAIN"
-echo ""
-echo "以后更新网站，只需要在 VPS 执行:"
-echo "  sudo skyvault-update"
-echo ""
-echo "检查 Caddy 状态:"
-echo "  sudo systemctl status caddy"
-echo ""
-echo "查看 Caddy 日志:"
-echo "  sudo journalctl -u caddy --no-pager -n 100"
-echo ""
-echo "注意："
-echo "  1. 域名 A 记录必须已经指向当前 VPS IP"
-echo "  2. VPS 安全组 / 防火墙必须开放 80 和 443"
-echo "  3. Caddy 会自动申请和续订 HTTPS 证书"
-echo "================================================="
+  pause
+}
+
+install_caddy() {
+  install_base_deps
+
+  echo ""
+  echo "[Caddy] 安装 / 检查 Caddy..."
+
+  if command -v caddy >/dev/null 2>&1; then
+    echo "Caddy 已安装，跳过安装。"
+    return
+  fi
+
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+    > /etc/apt/sources.list.d/caddy-stable.list
+
+  apt update
+  apt install -y caddy
+}
+
+show_port_usage() {
+  echo ""
+  echo "当前 80 / 443 端口占用情况："
+  ss -tulpn 2>/dev/null | grep -E ':80|:443' || echo "未检测到 80 / 443 端口占用。"
+}
+
+deploy_certificate() {
+  clear_screen
+  echo "================================================="
+  echo " 2-1. 安装 Caddy 并申请 HTTPS 证书"
+  echo "================================================="
+  echo ""
+
+  if [ ! -f "$SITE_DIR/index.html" ]; then
+    echo "未检测到静态网站文件：$SITE_DIR/index.html"
+    echo "建议先部署静态网站。"
+    echo ""
+    read -r -p "是否现在先自动部署静态网站？[Y/n]: " AUTO_DEPLOY
+    AUTO_DEPLOY="${AUTO_DEPLOY:-Y}"
+
+    if [[ "$AUTO_DEPLOY" =~ ^[Yy]$ ]]; then
+      deploy_static_site
+    else
+      echo "已取消证书部署。"
+      pause
+      return
+    fi
+  fi
+
+  echo ""
+  read -r -p "请输入要申请证书的域名，例如 drive.example.com: " DOMAIN
+
+  if [ -z "$DOMAIN" ]; then
+    echo "域名不能为空。"
+    pause
+    return
+  fi
+
+  echo ""
+  echo "你输入的域名是：$DOMAIN"
+  echo ""
+  echo "请确认："
+  echo "  1. 域名 A 记录已经解析到当前 VPS IP"
+  echo "  2. VPS 安全组 / 防火墙已开放 80 和 443"
+  echo "  3. 没有 Nginx / Apache / 宝塔占用 80 和 443"
+  echo ""
+
+  show_port_usage
+
+  echo ""
+  read -r -p "确认继续安装 Caddy 并申请证书？[y/N]: " CONFIRM
+  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "已取消。"
+    pause
+    return
+  fi
+
+  install_caddy
+
+  mkdir -p "$SITE_DIR"
+  chown -R caddy:caddy "$SITE_DIR" || true
+  chmod -R 755 "$SITE_DIR"
+
+  echo ""
+  echo "[Caddy] 写入配置文件..."
+
+  mkdir -p /etc/caddy
+
+  cat > "$CADDYFILE" <<EOF
+$DOMAIN {
+    root * $SITE_DIR
+    file_server
+    encode gzip zstd
+}
+EOF
+
+  caddy fmt --overwrite "$CADDYFILE"
+
+  cat > "$CONFIG_FILE" <<EOF
+DOMAIN="$DOMAIN"
+REPO_URL="$REPO_URL"
+SITE_DIR="$SITE_DIR"
+EOF
+
+  echo ""
+  echo "[Caddy] 启动服务..."
+  systemctl enable caddy
+  systemctl restart caddy
+
+  echo ""
+  echo "================================================="
+  echo "Caddy 和 HTTPS 证书部署完成！"
+  echo ""
+  echo "访问地址："
+  echo "  https://$DOMAIN"
+  echo ""
+  echo "查看 Caddy 状态："
+  echo "  sudo systemctl status caddy"
+  echo ""
+  echo "查看 Caddy 日志："
+  echo "  sudo journalctl -u caddy --no-pager -n 100"
+  echo ""
+  echo "说明："
+  echo "  Caddy 会自动申请证书，并自动续订。"
+  echo "================================================="
+
+  pause
+}
+
+remove_caddy_and_certs() {
+  clear_screen
+  echo "================================================="
+  echo " 2-2. 卸载 Caddy 并清空已经部署好的证书"
+  echo "================================================="
+  echo ""
+  echo "这个操作会删除："
+  echo "  /etc/caddy"
+  echo "  /var/lib/caddy"
+  echo "  /var/log/caddy"
+  echo "  Caddy 软件包"
+  echo ""
+  echo "注意：/var/lib/caddy 通常包含 Caddy 自动申请的证书。"
+  echo ""
+
+  read -r -p "确认卸载 Caddy 并清空证书？[y/N]: " CONFIRM
+  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "已取消。"
+    pause
+    return
+  fi
+
+  echo ""
+  echo "[1/5] 停止 Caddy..."
+  systemctl stop caddy 2>/dev/null || true
+  systemctl disable caddy 2>/dev/null || true
+
+  echo ""
+  echo "[2/5] 卸载 Caddy 软件包..."
+  apt purge -y caddy 2>/dev/null || true
+  apt autoremove -y 2>/dev/null || true
+
+  echo ""
+  echo "[3/5] 删除 Caddy 配置、证书和日志..."
+  rm -rf /etc/caddy
+  rm -rf /var/lib/caddy
+  rm -rf /var/log/caddy
+  rm -rf /usr/share/caddy
+
+  echo ""
+  echo "[4/5] 删除 Caddy 软件源..."
+  rm -f /etc/apt/sources.list.d/caddy-stable.list
+  rm -f /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+
+  echo ""
+  echo "[5/5] 清理完成。"
+
+  echo ""
+  echo "Caddy 和已经申请的证书已清空。"
+  echo "如果之前证书申请失败，现在可以重新进入菜单申请。"
+
+  pause
+}
+
+cert_menu() {
+  while true; do
+    clear_screen
+    echo "================================================="
+    echo " 2. 证书 / Caddy 管理"
+    echo "================================================="
+    echo " 1) 安装 Caddy 并申请 HTTPS 证书"
+    echo " 2) 卸载 Caddy 并清空已经部署好的证书"
+    echo " 0) 返回主菜单"
+    echo "================================================="
+    read -r -p "请选择操作: " CHOICE
+
+    case "$CHOICE" in
+      1) deploy_certificate ;;
+      2) remove_caddy_and_certs ;;
+      0) break ;;
+      *) echo "无效选择"; sleep 1 ;;
+    esac
+  done
+}
+
+full_uninstall() {
+  clear_screen
+  echo "================================================="
+  echo " 3. 完全卸载：静态网站 + Caddy + 证书"
+  echo "================================================="
+  echo ""
+  echo "这个操作会删除："
+  echo "  $SITE_DIR"
+  echo "  /usr/local/bin/skyvault-update"
+  echo "  $CONFIG_FILE"
+  echo "  Caddy"
+  echo "  Caddy 配置和证书目录"
+  echo ""
+  echo "该操作不可恢复。"
+  echo ""
+
+  read -r -p "确认完全卸载？[y/N]: " CONFIRM
+  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "已取消。"
+    pause
+    return
+  fi
+
+  echo ""
+  echo "[1/3] 删除静态网站..."
+  rm -rf "$SITE_DIR"
+  rm -f /usr/local/bin/skyvault-update
+  rm -f "$CONFIG_FILE"
+
+  echo ""
+  echo "[2/3] 停止并卸载 Caddy..."
+  systemctl stop caddy 2>/dev/null || true
+  systemctl disable caddy 2>/dev/null || true
+  apt purge -y caddy 2>/dev/null || true
+  apt autoremove -y 2>/dev/null || true
+
+  echo ""
+  echo "[3/3] 清空 Caddy 配置、证书和日志..."
+  rm -rf /etc/caddy
+  rm -rf /var/lib/caddy
+  rm -rf /var/log/caddy
+  rm -rf /usr/share/caddy
+  rm -f /etc/apt/sources.list.d/caddy-stable.list
+  rm -f /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+
+  echo ""
+  echo "完全卸载完成。"
+  pause
+}
+
+show_status() {
+  clear_screen
+  echo "================================================="
+  echo " 4. 查看当前状态"
+  echo "================================================="
+  echo ""
+
+  echo "网站目录："
+  echo "  $SITE_DIR"
+  if [ -f "$SITE_DIR/index.html" ]; then
+    echo "  状态：已部署 index.html"
+  else
+    echo "  状态：未检测到 index.html"
+  fi
+
+  echo ""
+  echo "Git 仓库："
+  echo "  $REPO_URL"
+
+  echo ""
+  echo "Caddy 状态："
+  if systemctl list-unit-files | grep -q '^caddy.service'; then
+    systemctl status caddy --no-pager -l || true
+  else
+    echo "  未安装 Caddy 或未检测到 caddy.service"
+  fi
+
+  echo ""
+  echo "端口占用："
+  ss -tulpn 2>/dev/null | grep -E ':80|:443' || echo "  未检测到 80 / 443 端口占用。"
+
+  echo ""
+  echo "Caddy 配置："
+  if [ -f "$CADDYFILE" ]; then
+    echo "----------------------------------------"
+    cat "$CADDYFILE"
+    echo "----------------------------------------"
+  else
+    echo "  未找到 $CADDYFILE"
+  fi
+
+  pause
+}
+
+install_as_command() {
+  clear_screen
+  echo "================================================="
+  echo " 5. 安装 skyvault-drive 为系统命令"
+  echo "================================================="
+  echo ""
+  echo "这个操作会把当前脚本复制到："
+  echo "  /usr/local/bin/skyvault-drive"
+  echo ""
+  echo "以后可以直接运行："
+  echo "  sudo skyvault-drive"
+  echo ""
+
+  read -r -p "确认安装为系统命令？[y/N]: " CONFIRM
+  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "已取消。"
+    pause
+    return
+  fi
+
+  if [ -f "$0" ]; then
+    cp "$0" /usr/local/bin/skyvault-drive
+    chmod +x /usr/local/bin/skyvault-drive
+    echo ""
+    echo "安装完成。以后可以执行："
+    echo "  sudo skyvault-drive"
+  else
+    echo "未能定位当前脚本文件。"
+  fi
+
+  pause
+}
+
+main_menu() {
+  while true; do
+    clear_screen
+    echo "================================================="
+    echo " SkyVault Drive 一键部署管理菜单"
+    echo "================================================="
+    echo " 仓库: $REPO_URL"
+    echo " 目录: $SITE_DIR"
+    echo "================================================="
+    echo " 1) 部署 / 更新静态网站"
+    echo " 2) 证书 / Caddy 管理"
+    echo " 3) 完全卸载：静态网站 + Caddy + 证书"
+    echo " 4) 查看状态"
+    echo " 5) 安装 skyvault-drive 为系统命令"
+    echo " 0) 退出"
+    echo "================================================="
+    read -r -p "请选择操作: " CHOICE
+
+    case "$CHOICE" in
+      1) deploy_static_site ;;
+      2) cert_menu ;;
+      3) full_uninstall ;;
+      4) show_status ;;
+      5) install_as_command ;;
+      0) echo "退出。"; exit 0 ;;
+      *) echo "无效选择"; sleep 1 ;;
+    esac
+  done
+}
+
+need_root
+check_system
+main_menu
