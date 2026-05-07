@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkyVault Drive - 云端文件空间</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --card: rgba(255,255,255,.76);
+      --text: #111827;
+      --muted: #64748b;
+      --purple: #6d28d9;
+      --blue: #2563eb;
+      --cyan: #06b6d4;
+      --shadow: 0 24px 70px rgba(51,65,85,.12);
+      --soft-shadow: 0 14px 38px rgba(51,65,85,.08);
+    }
+    body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 8% 8%, rgba(139,92,246,.24), transparent 30%),
+        radial-gradient(circle at 82% 12%, rgba(6,182,212,.18), transparent 28%),
+        radial-gradient(circle at 50% 90%, rgba(37,99,235,.12), transparent 30%),
+        linear-gradient(135deg, #f9fbff 0%, #f3f6ff 45%, #eef2ff 100%);
+      overflow-x: hidden;
+    }
+    body::before, body::after {
+      content: "";
+      position: fixed;
+      width: 340px;
+      height: 340px;
+      border-radius: 999px;
+      filter: blur(12px);
+      opacity: .32;
+      z-index: -1;
+      animation: floatBlob 9s ease-in-out infinite alternate;
+    }
+    body::before { left: -120px; top: 130px; background: linear-gradient(135deg, #8b5cf6, #06b6d4); }
+    body::after { right: -140px; bottom: 60px; background: linear-gradient(135deg, #2563eb, #ec4899); animation-delay: -3s; }
+    @keyframes floatBlob { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(30px,-28px,0) scale(1.08); } }
+    button, input { font: inherit; }
+    button { cursor: pointer; border: 0; background: transparent; }
+
+    .topbar { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid rgba(226,232,240,.72); background: rgba(255,255,255,.72); backdrop-filter: blur(22px); }
+    .topbar-inner { max-width: 1380px; margin: 0 auto; padding: 16px 28px; display: grid; grid-template-columns: 270px minmax(260px, 520px) auto; align-items: center; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon { width: 48px; height: 48px; border-radius: 18px; display: grid; place-items: center; color: #fff; font-size: 24px; background: linear-gradient(145deg, #7c3aed, #4f46e5 55%, #06b6d4); box-shadow: 0 18px 34px rgba(109,40,217,.32); position: relative; overflow: hidden; }
+    .brand-icon::after { content: ""; position: absolute; width: 72px; height: 72px; background: rgba(255,255,255,.23); border-radius: 50%; top: -46px; right: -30px; }
+    .brand h1 { font-size: 21px; letter-spacing: -.04em; line-height: 1.1; }
+    .brand p { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .search { height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 18px; border-radius: 999px; border: 1px solid rgba(148,163,184,.28); background: rgba(255,255,255,.72); box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 10px 28px rgba(51,65,85,.06); color: #94a3b8; }
+    .search input { width: 100%; outline: 0; border: 0; background: transparent; color: var(--text); }
+    .actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+    .icon-btn { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 16px; color: #334155; background: rgba(255,255,255,.54); transition: .22s; }
+    .icon-btn:hover { transform: translateY(-2px); background: #fff; box-shadow: var(--soft-shadow); }
+    .primary-btn { height: 44px; padding: 0 18px; border-radius: 16px; display: inline-flex; align-items: center; gap: 8px; color: #fff; font-weight: 800; background: linear-gradient(135deg, #7c3aed, #4f46e5); box-shadow: 0 18px 34px rgba(109,40,217,.28); transition: .22s; }
+    .primary-btn:hover { transform: translateY(-2px) scale(1.01); }
+    .lang-toggle { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(255,255,255,.62); border: 1px solid rgba(148,163,184,.22); }
+    .lang-btn { height: 34px; padding: 0 11px; border-radius: 999px; color: #64748b; font-size: 12px; font-weight: 900; transition: .2s; }
+    .lang-btn.active { color: #fff; background: linear-gradient(135deg, #7c3aed, #2563eb); box-shadow: 0 10px 22px rgba(124,58,237,.20); }
+
+    .layout { max-width: 1380px; margin: 0 auto; padding: 26px 28px 42px; display: grid; grid-template-columns: 280px minmax(0, 1fr) 330px; gap: 24px; }
+    .sidebar, .main, .rightbar { min-width: 0; }
+    .sidebar, .rightbar { display: flex; flex-direction: column; gap: 18px; }
+    .main { display: flex; flex-direction: column; gap: 20px; }
+    .card { border: 1px solid rgba(255,255,255,.7); border-radius: 30px; background: var(--card); box-shadow: var(--shadow); backdrop-filter: blur(18px); }
+    .panel { padding: 18px; }
+    .nav-item { width: 100%; padding: 13px 14px; margin: 2px 0; border-radius: 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #475569; text-align: left; transition: .22s; }
+    .nav-left { display: flex; align-items: center; gap: 10px; }
+    .nav-item:hover { background: rgba(255,255,255,.72); transform: translateX(3px); }
+    .nav-item.active { color: #5b21b6; background: linear-gradient(135deg, rgba(124,58,237,.14), rgba(37,99,235,.08)); font-weight: 800; }
+    .nav-pill { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: rgba(148,163,184,.15); color: #64748b; }
+    .storage-card { padding: 20px; overflow: hidden; position: relative; }
+    .storage-card::after { content: ""; position: absolute; right: -42px; top: -42px; width: 130px; height: 130px; border-radius: 50%; background: radial-gradient(circle, rgba(124,58,237,.20), transparent 70%); }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .card-head h3 { font-size: 16px; }
+    .mini-icon { width: 36px; height: 36px; border-radius: 14px; display: grid; place-items: center; background: rgba(124,58,237,.10); }
+    .progress { height: 12px; margin: 18px 0 10px; border-radius: 999px; background: rgba(148,163,184,.16); overflow: hidden; }
+    .progress-bar { height: 100%; width: 72%; border-radius: inherit; background: linear-gradient(90deg, #7c3aed, #2563eb, #06b6d4); position: relative; }
+    .progress-bar::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); animation: shine 2.4s infinite; }
+    @keyframes shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+    .muted { color: var(--muted); font-size: 13px; line-height: 1.7; }
+    .outline-btn { width: 100%; height: 42px; margin-top: 16px; border-radius: 16px; border: 1px solid rgba(148,163,184,.28); background: rgba(255,255,255,.64); color: #334155; font-weight: 700; transition: .22s; }
+    .outline-btn:hover { transform: translateY(-2px); background: #fff; box-shadow: var(--soft-shadow); }
+
+    .hero { position: relative; overflow: hidden; padding: 24px; border-radius: 34px; color: #fff; background: radial-gradient(circle at 85% 20%, rgba(255,255,255,.28), transparent 26%), linear-gradient(135deg, #7c3aed 0%, #4f46e5 52%, #0891b2 100%); box-shadow: 0 28px 70px rgba(79,70,229,.28); }
+    .hero::before { content: ""; position: absolute; width: 320px; height: 320px; border-radius: 50%; right: -120px; bottom: -160px; background: rgba(255,255,255,.17); }
+    .hero-content { position: relative; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+    .hero h2 { font-size: 32px; letter-spacing: -.05em; margin-bottom: 8px; }
+    .hero p { color: rgba(255,255,255,.82); font-size: 14px; }
+    .hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; position: relative; }
+    .stat { padding: 14px; border-radius: 22px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.22); backdrop-filter: blur(12px); }
+    .stat strong { display: block; font-size: 21px; margin-bottom: 2px; }
+    .stat span { font-size: 12px; color: rgba(255,255,255,.78); }
+    .section-line { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .section-line h2 { font-size: 23px; letter-spacing: -.04em; }
+    .view-toggle { display: flex; gap: 5px; padding: 5px; border-radius: 18px; background: rgba(255,255,255,.72); border: 1px solid rgba(148,163,184,.22); }
+    .view-toggle button { width: 36px; height: 32px; border-radius: 13px; color: #64748b; font-weight: 900; }
+    .view-toggle button.active { color: #fff; background: linear-gradient(135deg, #7c3aed, #4f46e5); box-shadow: 0 10px 22px rgba(124,58,237,.22); }
+    .categories { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .category { padding: 18px; border-radius: 28px; min-height: 116px; background: rgba(255,255,255,.72); border: 1px solid rgba(255,255,255,.78); box-shadow: var(--soft-shadow); position: relative; overflow: hidden; transition: .22s; }
+    .category:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+    .category::after { content: ""; position: absolute; right: -30px; bottom: -36px; width: 100px; height: 100px; border-radius: 50%; opacity: .18; background: currentColor; }
+    .category-top { display: flex; justify-content: space-between; align-items: center; }
+    .category small { color: var(--muted); }
+    .category h3 { margin-top: 12px; font-size: 18px; }
+    .bubble { width: 42px; height: 42px; border-radius: 16px; display: grid; place-items: center; background: rgba(255,255,255,.78); box-shadow: inset 0 1px 0 rgba(255,255,255,.8); }
+    .c-purple { color: #7c3aed; } .c-blue { color: #2563eb; } .c-green { color: #059669; } .c-orange { color: #d97706; }
+    .files-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .files-list { display: flex; flex-direction: column; gap: 12px; }
+    .file-card { padding: 18px; border-radius: 28px; background: rgba(255,255,255,.78); border: 1px solid rgba(255,255,255,.78); box-shadow: var(--soft-shadow); transition: .22s; position: relative; overflow: hidden; }
+    .file-card::before { content: ""; position: absolute; left: 0; top: 0; height: 4px; width: 100%; background: linear-gradient(90deg, #7c3aed, #2563eb, #06b6d4); opacity: 0; transition: .22s; }
+    .file-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+    .file-card:hover::before { opacity: 1; }
+    .file-main { display: flex; align-items: center; gap: 13px; min-width: 0; }
+    .file-icon { width: 52px; height: 52px; border-radius: 20px; display: grid; place-items: center; background: linear-gradient(135deg, #f8fafc, #eef2ff); font-size: 24px; }
+    .file-title { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+    .files-list .file-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .files-list .file-meta { margin-top: 0; flex: 0 0 auto; }
+    .badge { display: inline-flex; align-items: center; height: 27px; padding: 0 10px; border-radius: 999px; background: rgba(148,163,184,.14); color: #475569; font-size: 12px; font-weight: 800; }
+    .right-widget { padding: 20px; }
+    .speed-card { padding: 22px; border-radius: 32px; color: white; background: radial-gradient(circle at 88% 10%, rgba(255,255,255,.22), transparent 24%), linear-gradient(145deg, #111827, #312e81 48%, #7c3aed); box-shadow: 0 26px 70px rgba(49,46,129,.28); overflow: hidden; position: relative; }
+    .speed-card::after { content: ""; position: absolute; width: 140px; height: 140px; right: -70px; bottom: -80px; background: rgba(255,255,255,.14); border-radius: 50%; }
+    .speed-card h3 { margin: 12px 0 8px; font-size: 20px; }
+    .speed-card p { color: rgba(255,255,255,.76); font-size: 13px; line-height: 1.7; }
+    .speed-meter { margin-top: 18px; height: 10px; border-radius: 999px; background: rgba(255,255,255,.17); overflow: hidden; }
+    .speed-meter div { height: 100%; width: 86%; background: linear-gradient(90deg, #22c55e, #06b6d4, #fff); border-radius: inherit; }
+    .activity { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .activity-item { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 20px; background: rgba(255,255,255,.58); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #7c3aed; box-shadow: 0 0 0 6px rgba(124,58,237,.10); }
+    .quick-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px; }
+    .quick { padding: 14px; border-radius: 20px; background: rgba(255,255,255,.62); border: 1px solid rgba(255,255,255,.7); text-align: left; transition: .22s; }
+    .quick:hover { transform: translateY(-2px); background: #fff; }
+    .quick strong { display: block; margin-top: 8px; font-size: 13px; }
+    .empty { padding: 28px; border-radius: 28px; background: rgba(255,255,255,.72); color: var(--muted); }
+
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 250px minmax(0,1fr); }
+      .rightbar { grid-column: 1 / -1; display: grid; grid-template-columns: 1.1fr 1fr 1fr; }
+      .categories { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 840px) {
+      .topbar-inner { grid-template-columns: 1fr; gap: 12px; }
+      .actions { justify-content: flex-start; }
+      .layout { grid-template-columns: 1fr; padding: 18px; }
+      .rightbar { display: flex; }
+      .hero-content { flex-direction: column; }
+      .hero-stats { grid-template-columns: 1fr; }
+      .files-grid { grid-template-columns: 1fr; }
+      .files-list .file-card { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-icon">☁</div>
+        <div>
+          <h1>SkyVault Drive</h1>
+          <p data-i18n="brandSubtitle">智能云端文件空间</p>
+        </div>
+      </div>
+      <label class="search">
+        <span>⌕</span>
+        <input id="searchInput" type="search" data-i18n-placeholder="searchPlaceholder" placeholder="搜索文件、文件夹或类型" />
+      </label>
+      <div class="actions">
+        <div class="lang-toggle" aria-label="Language switch">
+          <button class="lang-btn active" data-lang="zh">中文</button>
+          <button class="lang-btn" data-lang="en">EN</button>
+        </div>
+        <button class="icon-btn" title="通知">🔔</button>
+        <button class="icon-btn" title="主题">✨</button>
+        <button class="icon-btn" title="设置">⚙</button>
+        <button class="primary-btn"><span>↑</span> <span data-i18n="upload">上传</span></button>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card panel">
+        <nav id="folderNav">
+          <button class="nav-item active" data-folder-key="myFiles"><span class="nav-left">📁 <span data-i18n="myFiles">我的文件</span></span><span class="nav-pill">248K</span></button>
+          <button class="nav-item" data-folder-key="shared"><span class="nav-left">🗂 <span data-i18n="shared">共享空间</span></span><span class="nav-pill">1.8K</span></button>
+          <button class="nav-item" data-folder-key="recent"><span class="nav-left">🕘 <span data-i18n="recent">最近访问</span></span><span class="nav-pill">8.6K</span></button>
+          <button class="nav-item" data-folder-key="favorites"><span class="nav-left">⭐ <span data-i18n="favorites">收藏</span></span><span class="nav-pill">936</span></button>
+          <button class="nav-item" data-folder-key="trash"><span class="nav-left">🗑 <span data-i18n="trash">回收站</span></span><span class="nav-pill">128</span></button>
+        </nav>
+      </section>
+
+      <section class="card storage-card">
+        <div class="card-head">
+          <h3 data-i18n="storage">存储空间</h3>
+          <span class="mini-icon">💽</span>
+        </div>
+        <div class="progress"><div class="progress-bar"></div></div>
+        <p class="muted" data-i18n="storageUsed">已用 8.6 TB / 12 TB</p>
+        <button class="outline-btn" data-i18n="upgrade">升级容量</button>
+      </section>
+    </aside>
+
+    <section class="main">
+      <section class="hero">
+        <div class="hero-content">
+          <div>
+            <h2 id="pageTitle">我的文件</h2>
+            <p data-i18n="heroDesc">集中管理文档、图片、媒体与归档文件，支持快速搜索与分类浏览。</p>
+          </div>
+          <div class="view-toggle">
+            <button id="gridBtn" class="active" title="网格视图">▦</button>
+            <button id="listBtn" title="列表视图">☰</button>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <div class="stat"><strong>128,420</strong><span data-i18n="totalFiles">总文件</span></div>
+          <div class="stat"><strong>9.8TB</strong><span data-i18n="monthlyTransfer">本月传输</span></div>
+          <div class="stat"><strong>99.99%</strong><span data-i18n="availability">服务可用性</span></div>
+        </div>
+      </section>
+
+      <div class="section-line">
+        <div>
+          <h2 data-i18n="quickCategories">快速分类</h2>
+          <p class="muted" data-i18n="quickDesc">选择常用类型，快速定位文件</p>
+        </div>
+      </div>
+
+      <div class="categories">
+        <article class="category c-purple"><div class="category-top"><small>Documents</small><div class="bubble">📄</div></div><h3 data-i18n="docs">文档</h3></article>
+        <article class="category c-blue"><div class="category-top"><small>Pictures</small><div class="bubble">🖼</div></div><h3 data-i18n="pictures">图片</h3></article>
+        <article class="category c-green"><div class="category-top"><small>Media</small><div class="bubble">🎬</div></div><h3 data-i18n="media">媒体</h3></article>
+        <article class="category c-orange"><div class="category-top"><small>Archive</small><div class="bubble">🗜</div></div><h3 data-i18n="archive">归档</h3></article>
+      </div>
+
+      <div class="section-line">
+        <div>
+          <h2 data-i18n="recentFiles">最近文件</h2>
+          <p class="muted" data-i18n="recentDesc">最近上传与访问的文件</p>
+        </div>
+      </div>
+      <div id="filesContainer" class="files-grid"></div>
+    </section>
+
+    <aside class="rightbar">
+      <section class="speed-card">
+        <div style="font-size: 26px;">⚡</div>
+        <h3 data-i18n="transferOverview">传输概览</h3>
+        <p data-i18n="transferDesc">当前文件服务运行稳定，近期访问速度保持良好。</p>
+        <div class="speed-meter"><div></div></div>
+      </section>
+
+      <section class="card right-widget">
+        <div class="card-head">
+          <h3 data-i18n="activity">近期动态</h3>
+          <span class="mini-icon">🔄</span>
+        </div>
+        <div class="activity">
+          <div class="activity-item"><span class="dot"></span><div><strong>Design-Assets</strong><p class="muted" data-i18n="activity1">昨天 18:10 更新</p></div></div>
+          <div class="activity-item"><span class="dot" style="background:#06b6d4; box-shadow:0 0 0 6px rgba(6,182,212,.10)"></span><div><strong>Team-Photo.jpg</strong><p class="muted" data-i18n="activity2">周二 09:14 访问</p></div></div>
+          <div class="activity-item"><span class="dot" style="background:#10b981; box-shadow:0 0 0 6px rgba(16,185,129,.10)"></span><div><strong>Archive-2026.zip</strong><p class="muted" data-i18n="activity3">4月20日 归档</p></div></div>
+        </div>
+      </section>
+
+      <section class="card right-widget">
+        <div class="card-head">
+          <h3 data-i18n="quickAccess">快捷入口</h3>
+          <span class="mini-icon">🚀</span>
+        </div>
+        <div class="quick-grid">
+          <button class="quick">🔗<strong data-i18n="shareLink">分享链接</strong></button>
+          <button class="quick">📦<strong data-i18n="offlinePack">离线包</strong></button>
+          <button class="quick">🧾<strong data-i18n="accessLog">访问日志</strong></button>
+          <button class="quick">🧹<strong data-i18n="cleanSpace">清理空间</strong></button>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const translations = {
+      zh: {
+        brandSubtitle: "智能云端文件空间",
+        searchPlaceholder: "搜索文件、文件夹或类型",
+        upload: "上传",
+        myFiles: "我的文件",
+        shared: "共享空间",
+        recent: "最近访问",
+        favorites: "收藏",
+        trash: "回收站",
+        storage: "存储空间",
+        storageUsed: "已用 8.6 TB / 12 TB",
+        upgrade: "升级容量",
+        heroDesc: "集中管理文档、图片、媒体与归档文件，支持快速搜索与分类浏览。",
+        totalFiles: "总文件",
+        monthlyTransfer: "本月传输",
+        availability: "服务可用性",
+        quickCategories: "快速分类",
+        quickDesc: "选择常用类型，快速定位文件",
+        docs: "文档",
+        pictures: "图片",
+        media: "媒体",
+        archive: "归档",
+        recentFiles: "最近文件",
+        recentDesc: "最近上传与访问的文件",
+        transferOverview: "传输概览",
+        transferDesc: "当前文件服务运行稳定，近期访问速度保持良好。",
+        activity: "近期动态",
+        activity1: "昨天 18:10 更新",
+        activity2: "周二 09:14 访问",
+        activity3: "4月20日 归档",
+        quickAccess: "快捷入口",
+        shareLink: "分享链接",
+        offlinePack: "离线包",
+        accessLog: "访问日志",
+        cleanSpace: "清理空间",
+        empty: "没有找到匹配的文件。",
+        fileTypes: { pdf: "PDF", folder: "文件夹", image: "图片", video: "视频", zip: "压缩包", sheet: "表格" },
+        fileDates: { f1: "今天 10:42", f2: "昨天 18:10", f3: "周二 09:14", f4: "4月29日", f5: "4月20日", f6: "4月18日" }
+      },
+      en: {
+        brandSubtitle: "Intelligent Cloud File Space",
+        searchPlaceholder: "Search files, folders, or types",
+        upload: "Upload",
+        myFiles: "My Files",
+        shared: "Shared Space",
+        recent: "Recent",
+        favorites: "Favorites",
+        trash: "Trash",
+        storage: "Storage",
+        storageUsed: "Used 8.6 TB / 12 TB",
+        upgrade: "Upgrade Storage",
+        heroDesc: "Manage documents, images, media, and archives with fast search and category browsing.",
+        totalFiles: "Total Files",
+        monthlyTransfer: "Monthly Transfer",
+        availability: "Availability",
+        quickCategories: "Quick Categories",
+        quickDesc: "Jump into common file types quickly",
+        docs: "Documents",
+        pictures: "Pictures",
+        media: "Media",
+        archive: "Archive",
+        recentFiles: "Recent Files",
+        recentDesc: "Recently uploaded and accessed files",
+        transferOverview: "Transfer Overview",
+        transferDesc: "File services are stable with strong recent access performance.",
+        activity: "Recent Activity",
+        activity1: "Updated yesterday 18:10",
+        activity2: "Accessed Tue 09:14",
+        activity3: "Archived Apr 20",
+        quickAccess: "Quick Access",
+        shareLink: "Share Link",
+        offlinePack: "Offline Pack",
+        accessLog: "Access Logs",
+        cleanSpace: "Clean Space",
+        empty: "No matching files found.",
+        fileTypes: { pdf: "PDF", folder: "Folder", image: "Image", video: "Video", zip: "Archive", sheet: "Sheet" },
+        fileDates: { f1: "Today 10:42", f2: "Yesterday 18:10", f3: "Tue 09:14", f4: "Apr 29", f5: "Apr 20", f6: "Apr 18" }
+      }
+    };
+
+    const folderKeys = ["myFiles", "shared", "recent", "favorites", "trash"];
+    const files = [
+      { name: "Project-Brief.pdf", typeKey: "pdf", size: "2.4 MB", dateKey: "f1", icon: "📄", categoryKey: "docs" },
+      { name: "Design-Assets", typeKey: "folder", size: "128 MB", dateKey: "f2", icon: "📁", categoryKey: "folder" },
+      { name: "Team-Photo.jpg", typeKey: "image", size: "4.8 MB", dateKey: "f3", icon: "🖼", categoryKey: "pictures" },
+      { name: "Launch-Video.mp4", typeKey: "video", size: "86 MB", dateKey: "f4", icon: "🎬", categoryKey: "media" },
+      { name: "Archive-2026.zip", typeKey: "zip", size: "312 MB", dateKey: "f5", icon: "🗜", categoryKey: "archive" },
+      { name: "Invoice-May.xlsx", typeKey: "sheet", size: "688 KB", dateKey: "f6", icon: "📊", categoryKey: "docs" }
+    ];
+
+    const filesContainer = document.getElementById("filesContainer");
+    const searchInput = document.getElementById("searchInput");
+    const gridBtn = document.getElementById("gridBtn");
+    const listBtn = document.getElementById("listBtn");
+    const pageTitle = document.getElementById("pageTitle");
+    let currentView = "grid";
+    let currentLang = "zh";
+    let currentFolderKey = "myFiles";
+
+    function applyLanguage(lang) {
+      currentLang = lang;
+      document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+      const dict = translations[lang];
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.dataset.i18n;
+        if (dict[key]) el.textContent = dict[key];
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+        const key = el.dataset.i18nPlaceholder;
+        if (dict[key]) el.placeholder = dict[key];
+      });
+      document.querySelectorAll(".lang-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.lang === lang));
+      pageTitle.textContent = dict[currentFolderKey];
+      renderFiles();
+    }
+
+    function renderFiles() {
+      const dict = translations[currentLang];
+      const keyword = searchInput.value.trim().toLowerCase();
+      const filtered = files.filter(file => {
+        const type = dict.fileTypes[file.typeKey].toLowerCase();
+        const category = dict[file.categoryKey] ? dict[file.categoryKey].toLowerCase() : "folder";
+        return file.name.toLowerCase().includes(keyword) || type.includes(keyword) || category.includes(keyword);
+      });
+      filesContainer.className = currentView === "grid" ? "files-grid" : "files-list";
+      if (filtered.length === 0) {
+        filesContainer.innerHTML = `<div class="empty">${dict.empty}</div>`;
+        return;
+      }
+      filesContainer.innerHTML = filtered.map(file => `
+        <article class="file-card">
+          <div class="file-main">
+            <div class="file-icon">${file.icon}</div>
+            <div style="min-width:0;">
+              <div class="file-title">${file.name}</div>
+              <p class="muted">${dict.fileDates[file.dateKey]}</p>
+            </div>
+          </div>
+          <div class="file-meta">
+            <span class="badge">${dict.fileTypes[file.typeKey]}</span>
+            <span class="muted">${file.size}</span>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    document.getElementById("folderNav").addEventListener("click", event => {
+      const button = event.target.closest(".nav-item");
+      if (!button) return;
+      document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active"));
+      button.classList.add("active");
+      currentFolderKey = button.dataset.folderKey;
+      pageTitle.textContent = translations[currentLang][currentFolderKey];
+    });
+
+    document.querySelectorAll(".lang-btn").forEach(btn => {
+      btn.addEventListener("click", () => applyLanguage(btn.dataset.lang));
+    });
+
+    searchInput.addEventListener("input", renderFiles);
+    gridBtn.addEventListener("click", () => {
+      currentView = "grid";
+      gridBtn.classList.add("active");
+      listBtn.classList.remove("active");
+      renderFiles();
+    });
+    listBtn.addEventListener("click", () => {
+      currentView = "list";
+      listBtn.classList.add("active");
+      gridBtn.classList.remove("active");
+      renderFiles();
+    });
+    applyLanguage("zh");
+  </script>
+</body>
+</html>
